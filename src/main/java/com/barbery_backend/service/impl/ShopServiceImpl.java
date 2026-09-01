@@ -1,6 +1,8 @@
 package com.barbery_backend.service.impl;
 
+import com.barbery_backend.entity.Barber;
 import com.barbery_backend.entity.Shop;
+import com.barbery_backend.repository.BarberRepository;
 import com.barbery_backend.repository.ShopRepository;
 import com.barbery_backend.service.ShopService;
 import org.springframework.stereotype.Service;
@@ -11,9 +13,14 @@ import java.util.List;
 public class ShopServiceImpl implements ShopService {
 
     private final ShopRepository shopRepository;
+    private final BarberRepository barberRepository;
 
-    public ShopServiceImpl(ShopRepository shopRepository) {
+    public ShopServiceImpl(
+            ShopRepository shopRepository,
+            BarberRepository barberRepository
+    ) {
         this.shopRepository = shopRepository;
+        this.barberRepository = barberRepository;
     }
 
     @Override
@@ -43,6 +50,20 @@ public class ShopServiceImpl implements ShopService {
         existingShop.setAddress(updatedShop.getAddress());
         existingShop.setOpen(updatedShop.isOpen());
 
+        // If shop is closed,
+        // all barbers' shifts must be OFF.
+        if (!updatedShop.isOpen()) {
+
+            List<Barber> barbers =
+                    barberRepository.findByShopId(id);
+
+            for (Barber barber : barbers) {
+                barber.setShiftActive(false);
+            }
+
+            barberRepository.saveAll(barbers);
+        }
+
         return shopRepository.save(existingShop);
     }
 
@@ -61,6 +82,19 @@ public class ShopServiceImpl implements ShopService {
         Shop shop = getShopById(id);
 
         shop.setOpen(isOpen);
+
+        // Shop CLOSED → all barber shifts OFF
+        if (!isOpen) {
+
+            List<Barber> barbers =
+                    barberRepository.findByShopId(id);
+
+            for (Barber barber : barbers) {
+                barber.setShiftActive(false);
+            }
+
+            barberRepository.saveAll(barbers);
+        }
 
         shopRepository.save(shop);
     }
