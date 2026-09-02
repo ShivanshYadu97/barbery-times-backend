@@ -16,19 +16,41 @@ public class BarberMenuServiceImpl implements BarberMenuService {
     private final BarberMenuRepository barberMenuRepository;
     private final ShopRepository shopRepository;
 
-    public BarberMenuServiceImpl(BarberMenuRepository barberMenuRepository, ShopRepository shopRepository) {
+    public BarberMenuServiceImpl(
+            BarberMenuRepository barberMenuRepository,
+            ShopRepository shopRepository
+    ) {
         this.barberMenuRepository = barberMenuRepository;
         this.shopRepository = shopRepository;
     }
 
     @Override
-    public List<BarberMenu> getAllServices() {
-        return barberMenuRepository.findAll();
+    public List<BarberMenu> getServicesByShop(Long shopId) {
+
+        if (!shopRepository.existsById(shopId)) {
+            throw new RuntimeException("Shop not found with id: " + shopId);
+        }
+
+        return barberMenuRepository.findByShopId(shopId);
+    }
+
+    @Override
+    public List<BarberMenu> getActiveServicesByShop(Long shopId) {
+
+        if (!shopRepository.existsById(shopId)) {
+            throw new RuntimeException("Shop not found with id: " + shopId);
+        }
+
+        return barberMenuRepository.findByShopIdAndIsActiveTrue(shopId);
     }
 
     @Override
     public BarberMenu getServiceById(Long id) {
-        return barberMenuRepository.findById(id).orElseThrow(() -> new RuntimeException("Service not found with id: " + id));
+
+        return barberMenuRepository.findById(id)
+                .orElseThrow(() ->
+                        new RuntimeException("Service not found with id: " + id)
+                );
     }
 
     @Override
@@ -36,14 +58,24 @@ public class BarberMenuServiceImpl implements BarberMenuService {
 
         Shop shop = shopRepository
                 .findById(request.getShopId())
-                .orElseThrow(() -> new RuntimeException("Shop not found with id: " + request.getShopId()));
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "Shop not found with id: " + request.getShopId()
+                        )
+                );
 
         BarberMenu barberMenu = BarberMenu.builder()
                 .name(request.getName())
                 .description(request.getDescription())
                 .durationMinutes(request.getDurationMinutes())
                 .price(request.getPrice())
-                .isActive(request.getActive() != null ? request.getActive() : true).shop(shop).build();
+                .isActive(
+                        request.getActive() != null
+                                ? request.getActive()
+                                : true
+                )
+                .shop(shop)
+                .build();
 
         return barberMenuRepository.save(barberMenu);
     }
@@ -64,7 +96,13 @@ public class BarberMenuServiceImpl implements BarberMenuService {
 
         if (request.getShopId() != null) {
 
-            Shop shop = shopRepository.findById(request.getShopId()).orElseThrow(() -> new RuntimeException("Shop not found with id: " + request.getShopId()));
+            Shop shop = shopRepository
+                    .findById(request.getShopId())
+                    .orElseThrow(() ->
+                            new RuntimeException(
+                                    "Shop not found with id: " + request.getShopId()
+                            )
+                    );
 
             existingService.setShop(shop);
         }
@@ -77,6 +115,9 @@ public class BarberMenuServiceImpl implements BarberMenuService {
 
         BarberMenu existingService = getServiceById(id);
 
-        barberMenuRepository.delete(existingService);
+        // Soft delete: database se record delete nahi hoga
+        existingService.setActive(false);
+
+        barberMenuRepository.save(existingService);
     }
 }

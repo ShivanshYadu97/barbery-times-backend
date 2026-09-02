@@ -7,7 +7,9 @@ import java.util.List;
 
 public interface BarberMenuService {
 
-    List<BarberMenu> getAllServices();
+    List<BarberMenu> getServicesByShop(Long shopId);
+
+    List<BarberMenu> getActiveServicesByShop(Long shopId);
 
     BarberMenu getServiceById(Long id);
 
