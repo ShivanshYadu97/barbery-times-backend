@@ -50,4 +50,37 @@ public class JoinQueueController {
         return ResponseEntity.ok(queue);
     }
 
+
+    @GetMapping("/shop/{shopId}/customer/{customerId}")
+    public ResponseEntity<QueueResponse> getQueueByShopAndCustomer(
+            @PathVariable Long shopId,
+            @PathVariable Long customerId
+    ) {
+        QueueResponse queue =
+                joinQueueService.getQueueByShopAndCustomer(
+                        shopId,
+                        customerId
+                );
+
+        return ResponseEntity.ok(queue);
+    }
+
+
+
+    // ==========================================
+// START SERVICE by barber
+// ==========================================
+
+    @PostMapping("/{queueId}/start")
+    public ResponseEntity<CurrentQueue> startService(
+            @PathVariable Long queueId
+    ) {
+
+        CurrentQueue queueEntry =
+                joinQueueService.startService(queueId);
+
+        return ResponseEntity.ok(queueEntry);
+    }
+
+
 }

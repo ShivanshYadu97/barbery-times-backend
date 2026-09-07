@@ -32,5 +32,7 @@ public class QueueResponse {
 
     private LocalDateTime estimatedStartTime;
 
+    private LocalDateTime serviceStartedAt;
+
     private QueueStatus status;
 }

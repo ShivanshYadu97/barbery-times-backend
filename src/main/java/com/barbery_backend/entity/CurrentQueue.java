@@ -49,6 +49,9 @@ public class CurrentQueue {
     @Column(nullable = false)
     private LocalDateTime estimatedStartTime;
 
+    @Column
+    private LocalDateTime serviceStartedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private QueueStatus status;

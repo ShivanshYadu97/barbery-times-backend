@@ -43,7 +43,10 @@ public class JoinQueueServiceImpl implements JoinQueueService {
         this.barberMenuRepository = barberMenuRepository;
     }
 
-    //Join Queue
+    // ==========================================
+    // JOIN QUEUE
+    // ==========================================
+
     @Override
     public CurrentQueue joinQueue(JoinQueueRequest request) {
 
@@ -82,15 +85,21 @@ public class JoinQueueServiceImpl implements JoinQueueService {
         }
 
         // 5. Validate Services
-        if (request.getServiceIds() == null || request.getServiceIds().isEmpty()) {
-            throw new RuntimeException("At least one service must be selected");
+        if (request.getServiceIds() == null ||
+                request.getServiceIds().isEmpty()) {
+
+            throw new RuntimeException(
+                    "At least one service must be selected"
+            );
         }
 
         List<BarberMenu> services =
                 barberMenuRepository.findAllById(request.getServiceIds());
 
         if (services.size() != request.getServiceIds().size()) {
-            throw new RuntimeException("One or more services not found");
+            throw new RuntimeException(
+                    "One or more services not found"
+            );
         }
 
         // 6. Calculate total price and duration
@@ -124,7 +133,9 @@ public class JoinQueueServiceImpl implements JoinQueueService {
         // 8. Get current queue
         List<CurrentQueue> currentQueue =
                 currentQueueRepository
-                        .findByShopIdOrderByQueuePositionAsc(shop.getId());
+                        .findByShopIdOrderByQueuePositionAsc(
+                                shop.getId()
+                        );
 
         // 9. Calculate next queue position
         int queuePosition = currentQueue.size() + 1;
@@ -141,9 +152,10 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                     || queueEntry.getStatus() == QueueStatus.CALLED
                     || queueEntry.getStatus() == QueueStatus.IN_SERVICE) {
 
-                estimatedStartTime = estimatedStartTime.plusMinutes(
-                        queueEntry.getTotalDurationMinutes()
-                );
+                estimatedStartTime =
+                        estimatedStartTime.plusMinutes(
+                                queueEntry.getTotalDurationMinutes()
+                        );
             }
         }
 
@@ -158,6 +170,10 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                 .totalDurationMinutes(totalDurationMinutes)
                 .joinedAt(joinedAt)
                 .estimatedStartTime(estimatedStartTime)
+
+                // Service abhi start nahi hui
+                .serviceStartedAt(null)
+
                 .status(QueueStatus.WAITING)
                 .build();
 
@@ -166,19 +182,25 @@ public class JoinQueueServiceImpl implements JoinQueueService {
     }
 
 
-    //Remove all from Queue
+    // ==========================================
+    // REMOVE ALL FROM QUEUE
+    // ==========================================
+
     @Override
     public void clearQueue() {
         currentQueueRepository.deleteAll();
     }
 
-//    @Override
-//    public List<QueueResponse> getQueueByShopAndBarber(Long shopId, Long barberId) {
-//        return List.of();
-//    }
+
+    // ==========================================
+    // GET QUEUE BY SHOP + BARBER
+    // ==========================================
 
     @Override
-    public List<QueueResponse> getQueueByShopAndBarber(Long shopId, Long barberId) {
+    public List<QueueResponse> getQueueByShopAndBarber(
+            Long shopId,
+            Long barberId
+    ) {
 
         List<CurrentQueue> queueEntries =
                 currentQueueRepository
@@ -192,19 +214,125 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                         .id(queue.getId())
                         .customerId(queue.getCustomer().getId())
                         .customerName(queue.getCustomer().getName())
-                        .barberId(queue.getBarber() != null
-                                ? queue.getBarber().getId()
-                                : null)
+                        .barberId(
+                                queue.getBarber() != null
+                                        ? queue.getBarber().getId()
+                                        : null
+                        )
                         .queuePosition(queue.getQueuePosition())
                         .services(queue.getServices())
                         .totalPrice(queue.getTotalPrice())
-                        .totalDurationMinutes(queue.getTotalDurationMinutes())
+                        .totalDurationMinutes(
+                                queue.getTotalDurationMinutes()
+                        )
                         .joinedAt(queue.getJoinedAt())
-                        .estimatedStartTime(queue.getEstimatedStartTime())
+                        .estimatedStartTime(
+                                queue.getEstimatedStartTime()
+                        )
+
+                        // IMPORTANT:
+                        // Refresh ke baad timer ke liye
+                        // service start time frontend ko bhejna hai
+                        .serviceStartedAt(
+                                queue.getServiceStartedAt()
+                        )
+
                         .status(queue.getStatus())
                         .build()
                 )
                 .collect(Collectors.toList());
     }
 
+
+    // ==========================================
+    // GET QUEUE BY SHOP + CUSTOMER
+    // ==========================================
+
+    @Override
+    public QueueResponse getQueueByShopAndCustomer(
+            Long shopId,
+            Long customerId
+    ) {
+
+        CurrentQueue queue =
+                currentQueueRepository
+                        .findByShopIdAndCustomerId(
+                                shopId,
+                                customerId
+                        )
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Customer is not currently in the queue"
+                                )
+                        );
+
+        return QueueResponse.builder()
+                .id(queue.getId())
+                .customerId(queue.getCustomer().getId())
+                .customerName(queue.getCustomer().getName())
+                .barberId(
+                        queue.getBarber() != null
+                                ? queue.getBarber().getId()
+                                : null
+                )
+                .queuePosition(queue.getQueuePosition())
+                .services(queue.getServices())
+                .totalPrice(queue.getTotalPrice())
+                .totalDurationMinutes(
+                        queue.getTotalDurationMinutes()
+                )
+                .joinedAt(queue.getJoinedAt())
+                .estimatedStartTime(
+                        queue.getEstimatedStartTime()
+                )
+
+                // IMPORTANT:
+                // Customer side ko bhi service start time milega
+                .serviceStartedAt(
+                        queue.getServiceStartedAt()
+                )
+
+                .status(queue.getStatus())
+                .build();
+    }
+
+
+    // ==========================================
+    // START SERVICE AT BARBER SIDE
+    // ==========================================
+
+    @Override
+    public CurrentQueue startService(Long queueId) {
+
+        // 1. Queue entry find karo
+        CurrentQueue queue =
+                currentQueueRepository
+                        .findById(queueId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Queue entry not found"
+                                )
+                        );
+
+        // 2. Sirf WAITING customer hi service start kar sakta hai
+        if (queue.getStatus() != QueueStatus.WAITING) {
+
+            throw new RuntimeException(
+                    "Customer is not in WAITING status"
+            );
+        }
+
+        // 3. Service start time save karo
+        queue.setServiceStartedAt(
+                LocalDateTime.now()
+        );
+
+        // 4. Status WAITING → IN_SERVICE
+        queue.setStatus(
+                QueueStatus.IN_SERVICE
+        );
+
+        // 5. Updated queue database mein save karo
+        return currentQueueRepository.save(queue);
+    }
 }

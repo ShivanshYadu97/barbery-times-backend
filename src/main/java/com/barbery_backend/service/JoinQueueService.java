@@ -13,4 +13,9 @@ public interface JoinQueueService {
     void clearQueue();
 
     List<QueueResponse> getQueueByShopAndBarber(Long shopId, Long barberId);
+
+    QueueResponse getQueueByShopAndCustomer(Long shopId, Long customerId);
+
+    CurrentQueue startService(Long queueId);    //start button at barber
+
 }
