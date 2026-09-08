@@ -19,7 +19,7 @@ public class Processed {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private String transactionId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

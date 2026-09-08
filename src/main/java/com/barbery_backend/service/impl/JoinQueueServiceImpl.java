@@ -2,17 +2,9 @@ package com.barbery_backend.service.impl;
 
 import com.barbery_backend.dto.JoinQueueRequest;
 import com.barbery_backend.dto.QueueResponse;
-import com.barbery_backend.entity.Barber;
-import com.barbery_backend.entity.BarberMenu;
-import com.barbery_backend.entity.CurrentQueue;
-import com.barbery_backend.entity.Shop;
-import com.barbery_backend.entity.User;
+import com.barbery_backend.entity.*;
 import com.barbery_backend.enums.QueueStatus;
-import com.barbery_backend.repository.BarberMenuRepository;
-import com.barbery_backend.repository.BarberRepository;
-import com.barbery_backend.repository.CurrentQueueRepository;
-import com.barbery_backend.repository.ShopRepository;
-import com.barbery_backend.repository.UserRepository;
+import com.barbery_backend.repository.*;
 import com.barbery_backend.service.JoinQueueService;
 import org.springframework.stereotype.Service;
 
@@ -28,19 +20,22 @@ public class JoinQueueServiceImpl implements JoinQueueService {
     private final UserRepository userRepository;
     private final BarberRepository barberRepository;
     private final BarberMenuRepository barberMenuRepository;
+    private final ProcessedRepository processedRepository;
 
     public JoinQueueServiceImpl(
             CurrentQueueRepository currentQueueRepository,
             ShopRepository shopRepository,
             UserRepository userRepository,
             BarberRepository barberRepository,
-            BarberMenuRepository barberMenuRepository
+            BarberMenuRepository barberMenuRepository,
+            ProcessedRepository processedRepository
     ) {
         this.currentQueueRepository = currentQueueRepository;
         this.shopRepository = shopRepository;
         this.userRepository = userRepository;
         this.barberRepository = barberRepository;
         this.barberMenuRepository = barberMenuRepository;
+        this.processedRepository = processedRepository;
     }
 
     // ==========================================
@@ -335,4 +330,68 @@ public class JoinQueueServiceImpl implements JoinQueueService {
         // 5. Updated queue database mein save karo
         return currentQueueRepository.save(queue);
     }
+
+
+
+    // ==========================================
+    // STOP SERVICE AT BARBER SIDE
+    // ==========================================
+
+
+    @Override
+    public void stopService(Long queueId) {
+
+        CurrentQueue queue = currentQueueRepository
+                .findById(queueId)
+                .orElseThrow(() ->
+                        new RuntimeException("Queue entry not found")
+                );
+
+        if (queue.getStatus() != QueueStatus.IN_SERVICE) {
+            throw new RuntimeException(
+                    "Customer is not currently in service"
+            );
+        }
+
+        LocalDateTime serviceCompletedAt =
+                LocalDateTime.now();
+
+        Processed processed = Processed.builder()
+                .transactionId(null)
+                .shop(queue.getShop())
+                .customer(queue.getCustomer())
+                .barber(queue.getBarber())
+                .services(queue.getServices())
+                .totalPrice(queue.getTotalPrice())
+                .totalDurationMinutes(queue.getTotalDurationMinutes())
+                .joinedAt(queue.getJoinedAt())
+                .serviceStartedAt(queue.getServiceStartedAt())
+                .serviceCompletedAt(serviceCompletedAt)
+                .status(ProcessedStatus.COMPLETED)
+                .paymentStatus(PaymentStatus.PENDING)
+                .paymentMethod(null)
+                .createdAt(serviceCompletedAt)
+                .build();
+
+        processedRepository.save(processed);
+
+        currentQueueRepository.delete(queue);
+
+        List<CurrentQueue> remainingQueue =
+                currentQueueRepository
+                        .findByShopIdAndBarberIdOrderByQueuePositionAsc(
+                                queue.getShop().getId(),
+                                queue.getBarber().getId()
+                        );
+
+        int position = 1;
+
+        for (CurrentQueue remaining : remainingQueue) {
+            remaining.setQueuePosition(position++);
+        }
+
+        currentQueueRepository.saveAll(remainingQueue);
+    }
+
+
 }

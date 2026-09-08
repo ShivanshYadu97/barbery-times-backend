@@ -20,6 +20,8 @@ public class JoinQueueController {
         this.joinQueueService = joinQueueService;
     }
 
+
+    //Join Queue using this API
     @PostMapping("/join")
     public ResponseEntity<CurrentQueue> joinQueue(
             @RequestBody JoinQueueRequest request
@@ -39,6 +41,7 @@ public class JoinQueueController {
     }
 
 
+    //Used for currntly getting the updated Queue List
     @GetMapping("/shop/{shopId}/barber/{barberId}")
     public ResponseEntity<List<QueueResponse>> getQueueByShopAndBarber(
             @PathVariable Long shopId,
@@ -68,8 +71,8 @@ public class JoinQueueController {
 
 
     // ==========================================
-// START SERVICE by barber
-// ==========================================
+    // START SERVICE by barber
+    // ==========================================
 
     @PostMapping("/{queueId}/start")
     public ResponseEntity<CurrentQueue> startService(
@@ -80,6 +83,24 @@ public class JoinQueueController {
                 joinQueueService.startService(queueId);
 
         return ResponseEntity.ok(queueEntry);
+    }
+
+
+
+    // ==========================================
+    // STOP SERVICE by barber
+    // ==========================================
+
+    @PostMapping("/{queueId}/stop")
+    public ResponseEntity<String> stopService(
+            @PathVariable Long queueId
+    ) {
+
+        joinQueueService.stopService(queueId);
+
+        return ResponseEntity.ok(
+                "Service stopped and queue updated successfully"
+        );
     }
 
 

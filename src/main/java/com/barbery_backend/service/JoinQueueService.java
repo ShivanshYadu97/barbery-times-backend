@@ -18,4 +18,6 @@ public interface JoinQueueService {
 
     CurrentQueue startService(Long queueId);    //start button at barber
 
+    void stopService(Long queueId);
+
 }
