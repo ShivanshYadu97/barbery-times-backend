@@ -104,4 +104,44 @@ public class JoinQueueController {
     }
 
 
+    // ==========================================
+    // MARK NOT PRESENT by barber
+    // ==========================================
+
+
+    @PostMapping("/{queueId}/not-present")
+    public ResponseEntity<String> markNotPresent(
+            @PathVariable Long queueId
+    ) {
+
+        joinQueueService.markNotPresent(queueId);
+
+        return ResponseEntity.ok(
+                "Customer marked as not present successfully"
+        );
+    }
+
+
+
+    // ==========================================
+    // ADD EXTRA SERVICE by barber
+    // ==========================================
+
+
+
+    @PostMapping("/{queueId}/extra-service")
+    public ResponseEntity<CurrentQueue> addExtraService(
+            @PathVariable Long queueId,
+            @RequestParam Long serviceId
+    ) {
+        CurrentQueue queueEntry =
+                joinQueueService.addExtraService(
+                        queueId,
+                        serviceId
+                );
+
+        return ResponseEntity.ok(queueEntry);
+    }
+
+
 }

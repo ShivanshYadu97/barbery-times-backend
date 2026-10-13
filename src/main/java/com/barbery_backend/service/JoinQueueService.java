@@ -20,4 +20,8 @@ public interface JoinQueueService {
 
     void stopService(Long queueId);
 
+    void markNotPresent(Long queueId);
+
+    CurrentQueue addExtraService(Long queueId, Long serviceId);
+
 }

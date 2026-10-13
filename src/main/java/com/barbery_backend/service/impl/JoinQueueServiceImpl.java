@@ -356,6 +356,7 @@ public class JoinQueueServiceImpl implements JoinQueueService {
         LocalDateTime serviceCompletedAt =
                 LocalDateTime.now();
 
+        // 1. Move completed customer to Processed
         Processed processed = Processed.builder()
                 .transactionId(null)
                 .shop(queue.getShop())
@@ -375,8 +376,10 @@ public class JoinQueueServiceImpl implements JoinQueueService {
 
         processedRepository.save(processed);
 
+        // 2. Remove current customer
         currentQueueRepository.delete(queue);
 
+        // 3. Get remaining customers of same barber
         List<CurrentQueue> remainingQueue =
                 currentQueueRepository
                         .findByShopIdAndBarberIdOrderByQueuePositionAsc(
@@ -384,14 +387,221 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                                 queue.getBarber().getId()
                         );
 
+        // 4. Recalculate position + estimated start time
+        int position = 1;
+
+        LocalDateTime nextStartTime =
+                serviceCompletedAt;
+
+        for (CurrentQueue remaining : remainingQueue) {
+
+            // Queue position
+            remaining.setQueuePosition(position++);
+
+            // First waiting customer starts NOW
+            remaining.setEstimatedStartTime(
+                    nextStartTime
+            );
+
+            // Next customer's estimated time
+            nextStartTime =
+                    nextStartTime.plusMinutes(
+                            remaining.getTotalDurationMinutes()
+                    );
+        }
+
+        // 5. Save updated queue
+        currentQueueRepository.saveAll(remainingQueue);
+    }
+
+
+    // ==========================================
+    // MARK NOT PRESENT AT BARBER SIDE
+    // ==========================================
+
+    @Override
+    public void markNotPresent(Long queueId) {
+
+        // 1. Queue entry find karo
+        CurrentQueue queue = currentQueueRepository
+                .findById(queueId)
+                .orElseThrow(() ->
+                        new RuntimeException("Queue entry not found")
+                );
+
+        // 2. Sirf WAITING customer ko
+        //    Not Present mark kar sakte hain
+        if (queue.getStatus() != QueueStatus.WAITING) {
+            throw new RuntimeException(
+                    "Only WAITING customer can be marked as not present"
+            );
+        }
+
+        // 3. Current time
+        LocalDateTime processedAt = LocalDateTime.now();
+
+        // 4. Processed record create karo
+        Processed processed = Processed.builder()
+                .transactionId(null)
+                .shop(queue.getShop())
+                .customer(queue.getCustomer())
+                .barber(queue.getBarber())
+                .services(queue.getServices())
+                .totalPrice(queue.getTotalPrice())
+                .totalDurationMinutes(queue.getTotalDurationMinutes())
+                .joinedAt(queue.getJoinedAt())
+                .serviceStartedAt(null)
+                .serviceCompletedAt(null)
+                .status(ProcessedStatus.SKIPPED)
+                .paymentStatus(PaymentStatus.PENDING)
+                .paymentMethod(null)
+                .createdAt(processedAt)
+                .build();
+
+        // 5. Processed table mein save
+        processedRepository.save(processed);
+
+        // 6. Current queue se customer remove
+        currentQueueRepository.delete(queue);
+
+        // 7. Remaining queue nikalo
+        List<CurrentQueue> remainingQueue =
+                currentQueueRepository
+                        .findByShopIdAndBarberIdOrderByQueuePositionAsc(
+                                queue.getShop().getId(),
+                                queue.getBarber().getId()
+                        );
+
+        // 8. Queue positions dobara calculate karo
         int position = 1;
 
         for (CurrentQueue remaining : remainingQueue) {
             remaining.setQueuePosition(position++);
         }
 
+        // 9. Updated positions save karo
         currentQueueRepository.saveAll(remainingQueue);
     }
 
+
+    // ==========================================
+    // ADD EXTRA SERVICE AT BARBER SIDE
+    // ==========================================
+
+
+    @Override
+    public CurrentQueue addExtraService(Long queueId, Long serviceId) {
+
+        // 1. Current customer find
+        CurrentQueue queue = currentQueueRepository
+                .findById(queueId)
+                .orElseThrow(() ->
+                        new RuntimeException("Queue entry not found")
+                );
+
+        // 2. Sirf current customer / IN_SERVICE customer ke liye
+        if (queue.getStatus() != QueueStatus.IN_SERVICE) {
+            throw new RuntimeException(
+                    "Extra service can only be added to current customer"
+            );
+        }
+
+        // 3. Extra service find
+        BarberMenu extraService = barberMenuRepository
+                .findById(serviceId)
+                .orElseThrow(() ->
+                        new RuntimeException("Service not found")
+                );
+
+        // 4. Service active honi chahiye
+        if (!extraService.isActive()) {
+            throw new RuntimeException(
+                    "Service is inactive: " + extraService.getName()
+            );
+        }
+
+        // 5. Service same shop ki honi chahiye
+        if (!extraService.getShop().getId()
+                .equals(queue.getShop().getId())) {
+
+            throw new RuntimeException(
+                    "Service does not belong to this shop"
+            );
+        }
+
+        // 6. Existing services mein extra service add
+        queue.setServices(
+                queue.getServices()
+                        + ","
+                        + extraService.getName()
+        );
+
+        // 7. Price increase
+        queue.setTotalPrice(
+                queue.getTotalPrice()
+                        + extraService.getPrice()
+        );
+
+        // 8. Duration increase
+        queue.setTotalDurationMinutes(
+                queue.getTotalDurationMinutes()
+                        + extraService.getDurationMinutes()
+        );
+
+        // 9. Current queue save
+        currentQueueRepository.save(queue);
+
+
+        // ==========================================
+        // RECALCULATE REMAINING QUEUE ETA
+        // ==========================================
+
+        List<CurrentQueue> barberQueue =
+                currentQueueRepository
+                        .findByShopIdAndBarberIdOrderByQueuePositionAsc(
+                                queue.getShop().getId(),
+                                queue.getBarber().getId()
+                        );
+
+        LocalDateTime nextStartTime = null;
+
+        for (CurrentQueue customer : barberQueue) {
+
+            // Current customer jo already IN_SERVICE hai
+            if (customer.getStatus() == QueueStatus.IN_SERVICE
+                    && customer.getServiceStartedAt() != null) {
+
+                LocalDateTime serviceEndTime =
+                        customer.getServiceStartedAt()
+                                .plusMinutes(
+                                        customer.getTotalDurationMinutes()
+                                );
+
+                nextStartTime = serviceEndTime;
+
+            } else {
+
+                // WAITING customer ka estimated start
+                if (nextStartTime != null) {
+
+                    customer.setEstimatedStartTime(
+                            nextStartTime
+                    );
+
+                    nextStartTime =
+                            nextStartTime.plusMinutes(
+                                    customer.getTotalDurationMinutes()
+                            );
+                }
+            }
+        }
+
+        // 10. Updated ETA sab customers ke DB mein save
+        currentQueueRepository.saveAll(barberQueue);
+
+
+        // 11. Updated current customer return
+        return queue;
+    }
 
 }
