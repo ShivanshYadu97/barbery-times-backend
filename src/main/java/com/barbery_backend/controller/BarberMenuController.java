@@ -2,7 +2,9 @@ package com.barbery_backend.controller;
 
 import com.barbery_backend.dto.BarberMenuRequest;
 import com.barbery_backend.entity.BarberMenu;
+import com.barbery_backend.entity.CurrentQueue;
 import com.barbery_backend.service.BarberMenuService;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -46,6 +48,20 @@ public class BarberMenuController {
     ) {
         return ResponseEntity.ok(
                 barberMenuService.getServiceById(id)
+        );
+    }
+
+    // Customer - Get existing services from current_queue
+    @GetMapping("/shop/{shopId}/customer/{customerId}/existing")
+    public ResponseEntity<List<CurrentQueue>> getExistingServicesOfCustomer(
+            @PathVariable Long shopId,
+            @PathVariable Long customerId
+    ) {
+        return ResponseEntity.ok(
+                barberMenuService.getExistingServicesOfCustomer(
+                        shopId,
+                        customerId
+                )
         );
     }
 

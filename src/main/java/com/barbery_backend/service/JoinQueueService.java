@@ -16,12 +16,13 @@ public interface JoinQueueService {
 
     QueueResponse getQueueByShopAndCustomer(Long shopId, Long customerId);
 
+    CurrentQueue addExtraServices(Long queueId, List<Long> serviceIds);
+
     CurrentQueue startService(Long queueId);    //start button at barber
 
     void stopService(Long queueId);
 
     void markNotPresent(Long queueId);
 
-    CurrentQueue addExtraService(Long queueId, Long serviceId);
 
 }

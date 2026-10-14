@@ -6,11 +6,17 @@ import com.barbery_backend.entity.*;
 import com.barbery_backend.enums.QueueStatus;
 import com.barbery_backend.repository.*;
 import com.barbery_backend.service.JoinQueueService;
+import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.function.Function;
 
 @Service
 public class JoinQueueServiceImpl implements JoinQueueService {
@@ -484,78 +490,146 @@ public class JoinQueueServiceImpl implements JoinQueueService {
     }
 
 
+
     // ==========================================
     // ADD EXTRA SERVICE AT BARBER SIDE
     // ==========================================
 
 
-    @Override
-    public CurrentQueue addExtraService(Long queueId, Long serviceId) {
 
-        // 1. Current customer find
+    @Override
+    @Transactional
+    public CurrentQueue addExtraServices(
+            Long queueId,
+            List<Long> serviceIds
+    ) {
+
+        // 1. Validate selected service IDs
+        if (serviceIds == null || serviceIds.isEmpty()) {
+            throw new RuntimeException(
+                    "At least one extra service must be selected"
+            );
+        }
+
+        // Remove duplicate IDs while preserving selection order
+        List<Long> uniqueServiceIds =
+                new ArrayList<>(new LinkedHashSet<>(serviceIds));
+
+        if (uniqueServiceIds.contains(null)) {
+            throw new RuntimeException("Service ID cannot be null");
+        }
+
+        // 2. Find existing customer queue entry
         CurrentQueue queue = currentQueueRepository
                 .findById(queueId)
                 .orElseThrow(() ->
                         new RuntimeException("Queue entry not found")
                 );
 
-        // 2. Sirf current customer / IN_SERVICE customer ke liye
+        // 3. Extra services can only be added to an in-service customer
         if (queue.getStatus() != QueueStatus.IN_SERVICE) {
             throw new RuntimeException(
-                    "Extra service can only be added to current customer"
+                    "Extra services can only be added to a customer currently in service"
             );
         }
 
-        // 3. Extra service find
-        BarberMenu extraService = barberMenuRepository
-                .findById(serviceId)
-                .orElseThrow(() ->
-                        new RuntimeException("Service not found")
+        if (queue.getServiceStartedAt() == null) {
+            throw new RuntimeException(
+                    "Service start time is missing for this customer"
+            );
+        }
+
+        if (queue.getBarber() == null) {
+            throw new RuntimeException(
+                    "Barber is not assigned to this customer"
+            );
+        }
+
+        // 4. Fetch all selected services
+        List<BarberMenu> selectedServices =
+                barberMenuRepository.findAllById(uniqueServiceIds);
+
+        if (selectedServices.size() != uniqueServiceIds.size()) {
+            throw new RuntimeException(
+                    "One or more selected services were not found"
+            );
+        }
+
+        // Preserve the order of IDs sent by the frontend
+        Map<Long, BarberMenu> servicesById =
+                selectedServices.stream().collect(
+                        java.util.stream.Collectors.toMap(
+                                BarberMenu::getId,
+                                Function.identity()
+                        )
                 );
 
-        // 4. Service active honi chahiye
-        if (!extraService.isActive()) {
+        List<BarberMenu> orderedServices = uniqueServiceIds.stream()
+                .map(servicesById::get)
+                .collect(java.util.stream.Collectors.toList());
+
+        // 5. Validate every selected service
+        for (BarberMenu service : orderedServices) {
+
+            if (!service.isActive()) {
+                throw new RuntimeException(
+                        "Service is inactive: " + service.getName()
+                );
+            }
+
+            if (!service.getShop().getId()
+                    .equals(queue.getShop().getId())) {
+                throw new RuntimeException(
+                        "Service does not belong to this shop: "
+                                + service.getName()
+                );
+            }
+        }
+
+        // 6. Append service names and calculate extra price/duration
+        StringBuilder updatedServiceNames =
+                new StringBuilder(
+                        queue.getServices() == null
+                                ? ""
+                                : queue.getServices().trim()
+                );
+
+        int additionalPrice = 0;
+        int additionalDuration = 0;
+
+        for (BarberMenu service : orderedServices) {
+
+            if (updatedServiceNames.length() > 0) {
+                updatedServiceNames.append(", ");
+            }
+
+            updatedServiceNames.append(service.getName());
+
+            additionalPrice += service.getPrice();
+            additionalDuration += service.getDurationMinutes();
+        }
+
+        if (updatedServiceNames.length() > 500) {
             throw new RuntimeException(
-                    "Service is inactive: " + extraService.getName()
+                    "Combined service names exceed the maximum allowed length"
             );
         }
 
-        // 5. Service same shop ki honi chahiye
-        if (!extraService.getShop().getId()
-                .equals(queue.getShop().getId())) {
+        // 7. Update the current customer's queue entry
+        queue.setServices(updatedServiceNames.toString());
 
-            throw new RuntimeException(
-                    "Service does not belong to this shop"
-            );
-        }
-
-        // 6. Existing services mein extra service add
-        queue.setServices(
-                queue.getServices()
-                        + ","
-                        + extraService.getName()
-        );
-
-        // 7. Price increase
         queue.setTotalPrice(
-                queue.getTotalPrice()
-                        + extraService.getPrice()
+                queue.getTotalPrice() + additionalPrice
         );
 
-        // 8. Duration increase
         queue.setTotalDurationMinutes(
-                queue.getTotalDurationMinutes()
-                        + extraService.getDurationMinutes()
+                queue.getTotalDurationMinutes() + additionalDuration
         );
 
-        // 9. Current queue save
+        // Save the updated current customer
         currentQueueRepository.save(queue);
 
-
-        // ==========================================
-        // RECALCULATE REMAINING QUEUE ETA
-        // ==========================================
-
+        // 8. Fetch this barber's queue in queue-position order
         List<CurrentQueue> barberQueue =
                 currentQueueRepository
                         .findByShopIdAndBarberIdOrderByQueuePositionAsc(
@@ -563,30 +637,41 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                                 queue.getBarber().getId()
                         );
 
+        // 9. Recalculate estimated times for the entire barber queue
         LocalDateTime nextStartTime = null;
 
         for (CurrentQueue customer : barberQueue) {
 
-            // Current customer jo already IN_SERVICE hai
-            if (customer.getStatus() == QueueStatus.IN_SERVICE
-                    && customer.getServiceStartedAt() != null) {
+            if (customer.getStatus() == QueueStatus.IN_SERVICE) {
 
-                LocalDateTime serviceEndTime =
+                // Current service end time uses the updated duration
+                if (customer.getServiceStartedAt() == null) {
+                    throw new RuntimeException(
+                            "Service start time is missing for queue ID: "
+                                    + customer.getId()
+                    );
+                }
+
+                // Keep the active customer's start time consistent
+                customer.setEstimatedStartTime(
+                        customer.getServiceStartedAt()
+                );
+
+                nextStartTime =
                         customer.getServiceStartedAt()
                                 .plusMinutes(
                                         customer.getTotalDurationMinutes()
                                 );
 
-                nextStartTime = serviceEndTime;
+            } else if (
+                    customer.getStatus() == QueueStatus.WAITING
+                            || customer.getStatus() == QueueStatus.CALLED
+            ) {
 
-            } else {
-
-                // WAITING customer ka estimated start
+                // Update this customer's estimated start time
                 if (nextStartTime != null) {
 
-                    customer.setEstimatedStartTime(
-                            nextStartTime
-                    );
+                    customer.setEstimatedStartTime(nextStartTime);
 
                     nextStartTime =
                             nextStartTime.plusMinutes(
@@ -596,12 +681,12 @@ public class JoinQueueServiceImpl implements JoinQueueService {
             }
         }
 
-        // 10. Updated ETA sab customers ke DB mein save
+        // 10. Persist all updated queue timings
         currentQueueRepository.saveAll(barberQueue);
 
-
-        // 11. Updated current customer return
+        // 11. Return the updated current customer
         return queue;
     }
+
 
 }

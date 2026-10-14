@@ -129,15 +129,15 @@ public class JoinQueueController {
 
 
 
-    @PostMapping("/{queueId}/extra-service")
-    public ResponseEntity<CurrentQueue> addExtraService(
+    @PostMapping("/{queueId}/extra-services")
+    public ResponseEntity<CurrentQueue> addExtraServices(
             @PathVariable Long queueId,
-            @RequestParam Long serviceId
+            @RequestBody List<Long> serviceIds
     ) {
         CurrentQueue queueEntry =
-                joinQueueService.addExtraService(
+                joinQueueService.addExtraServices(
                         queueId,
-                        serviceId
+                        serviceIds
                 );
 
         return ResponseEntity.ok(queueEntry);

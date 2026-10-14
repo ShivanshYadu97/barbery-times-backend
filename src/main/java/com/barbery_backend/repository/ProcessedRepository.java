@@ -8,4 +8,5 @@ import java.util.List;
 public interface ProcessedRepository extends JpaRepository<Processed, Long> {
 
     List<Processed> findByShopIdOrderByServiceCompletedAtDesc(Long shopId);
+
 }

@@ -1,27 +1,34 @@
+
 package com.barbery_backend.service.impl;
 
 import com.barbery_backend.dto.BarberMenuRequest;
 import com.barbery_backend.entity.BarberMenu;
 import com.barbery_backend.entity.Shop;
+import com.barbery_backend.entity.CurrentQueue;
 import com.barbery_backend.repository.BarberMenuRepository;
 import com.barbery_backend.repository.ShopRepository;
+import com.barbery_backend.repository.CurrentQueueRepository;
 import com.barbery_backend.service.BarberMenuService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Collections;
 
 @Service
 public class BarberMenuServiceImpl implements BarberMenuService {
 
     private final BarberMenuRepository barberMenuRepository;
     private final ShopRepository shopRepository;
+    private final CurrentQueueRepository currentQueueRepository;
 
     public BarberMenuServiceImpl(
             BarberMenuRepository barberMenuRepository,
-            ShopRepository shopRepository
+            ShopRepository shopRepository,
+            CurrentQueueRepository currentQueueRepository
     ) {
         this.barberMenuRepository = barberMenuRepository;
         this.shopRepository = shopRepository;
+        this.currentQueueRepository = currentQueueRepository;
     }
 
     @Override
@@ -51,6 +58,22 @@ public class BarberMenuServiceImpl implements BarberMenuService {
                 .orElseThrow(() ->
                         new RuntimeException("Service not found with id: " + id)
                 );
+    }
+
+    @Override
+    public List<CurrentQueue> getExistingServicesOfCustomer(
+            Long shopId,
+            Long customerId
+    ) {
+
+        if (!shopRepository.existsById(shopId)) {
+            throw new RuntimeException("Shop not found with id: " + shopId);
+        }
+
+        return currentQueueRepository
+                .findByShopIdAndCustomerId(shopId, customerId)
+                .map(Collections::singletonList)
+                .orElse(Collections.emptyList());
     }
 
     @Override
