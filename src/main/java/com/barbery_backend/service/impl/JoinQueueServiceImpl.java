@@ -3,6 +3,7 @@ package com.barbery_backend.service.impl;
 import com.barbery_backend.dto.JoinQueueRequest;
 import com.barbery_backend.dto.QueueResponse;
 import com.barbery_backend.entity.*;
+import com.barbery_backend.enums.EntryType;
 import com.barbery_backend.enums.QueueStatus;
 import com.barbery_backend.repository.*;
 import com.barbery_backend.service.JoinQueueService;
@@ -50,6 +51,26 @@ public class JoinQueueServiceImpl implements JoinQueueService {
 
     @Override
     public CurrentQueue joinQueue(JoinQueueRequest request) {
+
+        // Validate entry type
+        if (request.getEntryType() == null ||
+                request.getEntryType().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Entry type is required: ONLINE or WALK_IN"
+            );
+        }
+
+        EntryType entryType;
+
+        try {
+            entryType = EntryType.valueOf(
+                    request.getEntryType().trim().toUpperCase()
+            );
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "Invalid entry type. Allowed values: ONLINE, WALK_IN"
+            );
+        }
 
         // 1. Validate Shop
         Shop shop = shopRepository.findById(request.getShopId())
@@ -165,6 +186,7 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                 .shop(shop)
                 .customer(customer)
                 .barber(barber)
+                .entryType(entryType)
                 .queuePosition(queuePosition)
                 .services(serviceNames)
                 .totalPrice(totalPrice)

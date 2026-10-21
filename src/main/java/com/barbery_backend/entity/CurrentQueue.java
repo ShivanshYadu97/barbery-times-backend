@@ -1,5 +1,6 @@
 package com.barbery_backend.entity;
 
+import com.barbery_backend.enums.EntryType;
 import com.barbery_backend.enums.QueueStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -51,6 +52,11 @@ public class CurrentQueue {
 
     @Column
     private LocalDateTime serviceStartedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entry_type", nullable = false, length = 20)
+    private EntryType entryType;
+
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

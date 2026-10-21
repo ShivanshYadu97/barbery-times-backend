@@ -17,4 +17,6 @@ public class JoinQueueRequest {
     private Long barberId;
 
     private List<Long> serviceIds;
+
+    private String entryType;
 }
