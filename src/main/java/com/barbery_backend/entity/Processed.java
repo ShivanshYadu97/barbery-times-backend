@@ -1,6 +1,7 @@
 package com.barbery_backend.entity;
 
 
+import com.barbery_backend.enums.EntryType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,6 +34,10 @@ public class Processed {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "barber_id")
     private Barber barber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entry_type", nullable = false)
+    private EntryType entryType;
 
     @Column(nullable = false, length = 500)
     private String services;
