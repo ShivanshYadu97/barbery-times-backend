@@ -26,6 +26,7 @@ public class UserController {
         return ResponseEntity.ok(createdUser);
     }
 
+
     // New API: Find Customer by Phone
     @GetMapping("/by-phone")
     public ResponseEntity<Map<String, Object>> getCustomerByPhone(
