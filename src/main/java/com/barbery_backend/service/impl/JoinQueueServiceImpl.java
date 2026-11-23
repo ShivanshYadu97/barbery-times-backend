@@ -6,6 +6,7 @@ import com.barbery_backend.entity.*;
 import com.barbery_backend.enums.EntryType;
 import com.barbery_backend.enums.QueueStatus;
 import com.barbery_backend.repository.*;
+import com.barbery_backend.service.DelayService;
 import com.barbery_backend.service.JoinQueueService;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,8 @@ public class JoinQueueServiceImpl implements JoinQueueService {
     private final BarberRepository barberRepository;
     private final BarberMenuRepository barberMenuRepository;
     private final ProcessedRepository processedRepository;
+    private final DelayService delayService;
+    private final DelayRepository delayRepository;
 
     public JoinQueueServiceImpl(
             CurrentQueueRepository currentQueueRepository,
@@ -35,7 +38,9 @@ public class JoinQueueServiceImpl implements JoinQueueService {
             UserRepository userRepository,
             BarberRepository barberRepository,
             BarberMenuRepository barberMenuRepository,
-            ProcessedRepository processedRepository
+            ProcessedRepository processedRepository,
+            DelayService delayService,
+            DelayRepository delayRepository
     ) {
         this.currentQueueRepository = currentQueueRepository;
         this.shopRepository = shopRepository;
@@ -43,11 +48,13 @@ public class JoinQueueServiceImpl implements JoinQueueService {
         this.barberRepository = barberRepository;
         this.barberMenuRepository = barberMenuRepository;
         this.processedRepository = processedRepository;
+        this.delayService = delayService;
+        this.delayRepository = delayRepository;
     }
 
-    // ==========================================
-    // JOIN QUEUE
-    // ==========================================
+// ==========================================
+// JOIN QUEUE
+// ==========================================
 
     @Override
     public CurrentQueue joinQueue(JoinQueueRequest request) {
@@ -155,9 +162,7 @@ public class JoinQueueServiceImpl implements JoinQueueService {
         // 8. Get current queue
         List<CurrentQueue> currentQueue =
                 currentQueueRepository
-                        .findByShopIdOrderByQueuePositionAsc(
-                                shop.getId()
-                        );
+                        .findByShopIdOrderByQueuePositionAsc(shop.getId());
 
         // 9. Calculate next queue position
         int queuePosition = currentQueue.size() + 1;
@@ -193,15 +198,36 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                 .totalDurationMinutes(totalDurationMinutes)
                 .joinedAt(joinedAt)
                 .estimatedStartTime(estimatedStartTime)
-
-                // Service abhi start nahi hui
                 .serviceStartedAt(null)
-
                 .status(QueueStatus.WAITING)
                 .build();
 
         // 13. Save queue entry
-        return currentQueueRepository.save(queueEntry);
+        CurrentQueue savedQueue = currentQueueRepository.save(queueEntry);
+
+        // 14. If queue position is 1, save/update Delay table
+        if (savedQueue.getQueuePosition() == 1 &&
+                savedQueue.getBarber() != null) {
+
+            delayService.saveOrUpdateDelay(
+                    savedQueue.getShop(),
+                    savedQueue.getBarber(),
+                    savedQueue.getCustomer(),
+                    savedQueue,
+                    savedQueue.getEstimatedStartTime()
+            );
+
+            //here the scheduler method will run
+            delayService.delayStarter(
+                    savedQueue.getCustomer().getId(),
+                    savedQueue.getBarber().getId(),
+                    savedQueue.getShop().getId(),
+                    savedQueue.getEstimatedStartTime()
+            );
+
+        }
+
+        return savedQueue;
     }
 
 
@@ -449,27 +475,21 @@ public class JoinQueueServiceImpl implements JoinQueueService {
     // ==========================================
 
     @Override
+    @Transactional
     public void markNotPresent(Long queueId) {
 
-        // 1. Queue entry find karo
-        CurrentQueue queue = currentQueueRepository
-                .findById(queueId)
-                .orElseThrow(() ->
-                        new RuntimeException("Queue entry not found")
-                );
+        CurrentQueue queue = currentQueueRepository.findById(queueId)
+                .orElseThrow(() -> new RuntimeException("Queue entry not found"));
 
-        // 2. Sirf WAITING customer ko
-        //    Not Present mark kar sakte hain
         if (queue.getStatus() != QueueStatus.WAITING) {
             throw new RuntimeException(
                     "Only WAITING customer can be marked as not present"
             );
         }
 
-        // 3. Current time
         LocalDateTime processedAt = LocalDateTime.now();
 
-        // 4. Processed record create karo
+        // Save customer details in Processed table
         Processed processed = Processed.builder()
                 .transactionId(null)
                 .shop(queue.getShop())
@@ -488,28 +508,31 @@ public class JoinQueueServiceImpl implements JoinQueueService {
                 .createdAt(processedAt)
                 .build();
 
-        // 5. Processed table mein save
         processedRepository.save(processed);
 
-        // 6. Current queue se customer remove
+        // Remove reference from Delay table before deleting CurrentQueue
+        delayRepository.findByCurrentQueueId(queue.getId())
+                .ifPresent(delay -> {
+                    delay.setCurrentQueue(null);
+                    delayRepository.save(delay);
+                });
+
+        // Delete customer from CurrentQueue
         currentQueueRepository.delete(queue);
 
-        // 7. Remaining queue nikalo
+        // Update remaining queue positions
         List<CurrentQueue> remainingQueue =
-                currentQueueRepository
-                        .findByShopIdAndBarberIdOrderByQueuePositionAsc(
-                                queue.getShop().getId(),
-                                queue.getBarber().getId()
-                        );
+                currentQueueRepository.findByShopIdAndBarberIdOrderByQueuePositionAsc(
+                        queue.getShop().getId(),
+                        queue.getBarber().getId()
+                );
 
-        // 8. Queue positions dobara calculate karo
         int position = 1;
 
         for (CurrentQueue remaining : remainingQueue) {
             remaining.setQueuePosition(position++);
         }
 
-        // 9. Updated positions save karo
         currentQueueRepository.saveAll(remainingQueue);
     }
 

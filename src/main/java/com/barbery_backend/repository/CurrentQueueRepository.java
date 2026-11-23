@@ -14,6 +14,12 @@ public interface CurrentQueueRepository extends JpaRepository<CurrentQueue, Long
 
     Optional<CurrentQueue> findByShopIdAndCustomerId(Long shopId, Long customerId);
 
+    Optional<CurrentQueue> findByCustomerIdAndBarberIdAndShopId(
+            Long customerId,
+            Long barberId,
+            Long shopId
+    );
+
 }
 
 
